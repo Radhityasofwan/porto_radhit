@@ -358,9 +358,9 @@ $adminUi = [
         #cv-preview [contenteditable] { outline: none; border-radius: 2px; cursor: text; }
         #cv-preview [contenteditable]:hover { background: rgba(79,70,229,0.05); }
         #cv-preview [contenteditable]:focus { outline: 1.5px dashed rgba(79,70,229,0.45); background: rgba(79,70,229,0.06); }
-        /* Contact slots: separator only between filled slots, placeholder hint on empty ones */
-        #cv-preview .cv-contact > span:not(:empty) ~ span:not(:empty)::before { content: ' • '; }
-        #cv-preview .cv-contact > span:empty::after { content: attr(data-ph); color: #c3c8d4; font-style: italic; }
+        /* Contact slots: real " • " separators (so they survive copy) + hint on empty slots */
+        #cv-preview .cv-contact > .cv-sep { margin: 0 .35em; }
+        #cv-preview .cv-contact .cv-slot:empty::after { content: attr(data-ph); color: #c3c8d4; font-style: italic; }
     </style>
 </head>
 <body class="flex h-screen bg-[#F8FAFC] overflow-hidden">
@@ -2307,8 +2307,29 @@ $adminUi = [
         }
 
         // One editable contact slot — empty slots stay visible via placeholder so they can be filled in
-        function cvContactSpan(path, val, ph) {
-            return `<span contenteditable="true" data-cv-path="${path}" data-ph="${esc(ph)}">${esc(val)}</span>`;
+        function cvSlot(path, val, ph) {
+            return `<span class="cv-slot" contenteditable="true" data-cv-path="${path}" data-ph="${esc(ph)}">${esc(val)}</span>`;
+        }
+
+        // A real text node, not a CSS pseudo-element, so the bullet is copyable and lands in
+        // exported text exactly where it is displayed
+        function cvSep() { return `<span class="cv-sep"> • </span>`; }
+
+        // contenteditable keeps a stray <br> when the user clears it, which defeats :empty and
+        // would leave the placeholder and the stored value disagreeing
+        function _cvNormalizeSlot(el) {
+            if (el.textContent.trim() === '' && el.innerHTML !== '') el.innerHTML = '';
+        }
+
+        // Bound once — #cv-preview persists, only its innerHTML is replaced
+        function bindCvPreviewEvents() {
+            const pv = document.getElementById('cv-preview');
+            if (!pv || pv.dataset.cvBound) return;
+            pv.dataset.cvBound = '1';
+            pv.addEventListener('input', ev => {
+                const slot = ev.target.closest ? ev.target.closest('.cv-slot') : null;
+                if (slot) _cvNormalizeSlot(slot);
+            });
         }
 
         // Drop scheme/www/tracking params so links read like "linkedin.com/in/name", never a share URL
@@ -2343,13 +2364,16 @@ $adminUi = [
             const L = cvLabels(d);
             const p = cvCleanContact(d);
 
-            // Contact lines — every slot editable; filled ones get a " • " separator, empty ones show a hint
-            const line1 = cvContactSpan('personal.location', p.location, L.ph_location)
-                        + cvContactSpan('personal.phone', p.phone, L.ph_phone)
-                        + cvContactSpan('personal.email', p.email, L.ph_email);
-            const line2 = cvContactSpan('personal.linkedin', p.linkedin, L.ph_linkedin)
-                        + `<span contenteditable="true" data-cv-path="labels.portfolio" data-ph="${esc(L.portfolio)}">${esc(L.portfolio)}</span>: `
-                        + cvContactSpan('personal.portfolio', p.portfolio, L.ph_portfolio);
+            // Contact lines — every slot always renders (empty ones as a grey hint), so the
+            // separators are unconditional here; the PDF/Word builders drop empty slots instead
+            const line1 = cvSlot('personal.location', p.location, L.ph_location) + cvSep()
+                        + cvSlot('personal.phone', p.phone, L.ph_phone) + cvSep()
+                        + cvSlot('personal.email', p.email, L.ph_email);
+            const line2 = cvSlot('personal.linkedin', p.linkedin, L.ph_linkedin) + cvSep()
+                        + `<span class="cv-portfolio">`
+                        + `<span class="cv-slot" contenteditable="true" data-cv-path="labels.portfolio" data-ph="${esc(L.portfolio)}">${esc(L.portfolio)}</span>: `
+                        + cvSlot('personal.portfolio', p.portfolio, L.ph_portfolio)
+                        + `</span>`;
 
             // Skills — category label editable, skill list editable as one string
             let skillsHtml = '';
@@ -2422,6 +2446,8 @@ $adminUi = [
                 ${eduHtml ? `<div class="cv-section-title" contenteditable="true" data-cv-path="labels.section_education">${esc(L.section_education)}</div>${eduHtml}` : ''}
             `;
 
+            bindCvPreviewEvents();
+
             // Show edit hint in header
             const hint = document.getElementById('cv-edit-hint');
             if (hint) hint.classList.remove('hidden');
@@ -2444,9 +2470,7 @@ $adminUi = [
             if (!cvData) return;
             document.querySelectorAll('#cv-preview [data-cv-path]').forEach(el => {
                 const path = el.dataset.cvPath;
-                // A contenteditable cleared by the user keeps a stray <br>, which defeats the
-                // :empty-based separator/placeholder CSS — strip it so the slot looks truly empty.
-                if (el.textContent.trim() === '' && el.innerHTML !== '') el.innerHTML = '';
+                _cvNormalizeSlot(el);
                 const val  = el.textContent.trim();
                 // skills_text needs to be split back to array
                 if (path.endsWith('.skills_text')) {
@@ -2490,7 +2514,7 @@ $adminUi = [
         }
 
         function buildCvPrintHtml(d) {
-            const p = d.personal || {};
+            const p = cvCleanContact(d);
             const L = cvLabels(d);
             const e = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const sec = t => `<h2>${t}</h2>`;
@@ -2640,7 +2664,7 @@ ${body}
         }
 
         function buildCvWordHtml(d) {
-            const p = d.personal || {};
+            const p = cvCleanContact(d);
             const L = cvLabels(d);
             const e = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
