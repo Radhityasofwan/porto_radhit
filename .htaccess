@@ -68,6 +68,9 @@
     # Block access to backup files and sensitive files
     RewriteRule \.(bak|sql|py|ps1|log|zip)$ - [F,L]
 
+    # Dev-only: skrip maintenance & migrasi tidak boleh diakses dari web
+    RewriteRule ^(maintenance|migrations)(/|$) - [F,L]
+
     # Serve static files directly
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule ^ - [L]
