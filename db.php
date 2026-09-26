@@ -10,16 +10,20 @@
  * Salin config.example.php untuk membuat salah satunya.
  */
 $__cfg = null;
+$__cfgFile = null;
 foreach ([
     __DIR__ . '/config.local.php',
     __DIR__ . '/porto-config.php',
     dirname(__DIR__) . '/porto-config.php',
 ] as $__f) {
-    if (is_file($__f)) { $__cfg = require $__f; break; }
+    if (is_file($__f)) { $__cfgFile = $__f; $__cfg = require $__f; break; }
 }
 if (!is_array($__cfg)) {
     die("Konfigurasi database tidak ditemukan. Salin config.example.php menjadi config.local.php atau porto-config.php (se-dir, atau satu level di atas public_html untuk produksi).");
 }
+
+// PHP 8.1+ membuat mysqli melempar exception, sehingga cek !$conn di bawah tak pernah tercapai
+mysqli_report(MYSQLI_REPORT_OFF);
 
 // Buat koneksi
 $conn = mysqli_connect(
@@ -29,8 +33,9 @@ $conn = mysqli_connect(
 
 // Cek koneksi
 if (!$conn) {
-    // Jangan tampilkan detail error di production kalau sudah live (opsional)
-    die("Koneksi database gagal. Silakan cek konfigurasi database atau status server.");
+    $__errno = mysqli_connect_errno();
+    error_log("db.php: koneksi gagal ($__errno) via $__cfgFile");
+    die("Koneksi database gagal (kode $__errno). Periksa host/user/pass/db di " . basename($__cfgFile) . ".");
 }
 
 // Set charset biar aman untuk UTF-8
