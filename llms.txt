@@ -1,0 +1,30 @@
+# Radhitya Sofwan — Portfolio
+
+> Digital Marketer & Web Developer based in Indonesia. Specializes in paid ads (Google Ads, Meta Ads), social media strategy, SEO, and web development.
+
+## About
+
+Radhitya Sofwan is a digital marketing practitioner with hands-on experience in performance marketing, content strategy, and web development. This site showcases selected projects, case studies, and articles.
+
+- [Home](https://radhityasofwan.my.id/)
+- [Portfolio & Projects](https://radhityasofwan.my.id/#projects)
+- [Skills](https://radhityasofwan.my.id/#skills)
+- [Blog & Articles](https://radhityasofwan.my.id/#blog)
+- [Contact](https://radhityasofwan.my.id/#contact)
+
+## Projects
+
+Selected case studies covering paid advertising campaigns, social media management, and web development work.
+
+- [View all projects](https://radhityasofwan.my.id/#projects)
+
+## Blog
+
+Articles about digital marketing, SEO, Meta Ads, and landing page best practices.
+
+- [All articles](https://radhityasofwan.my.id/#blog)
+
+## Contact
+
+- Email: radhityasofwan00@gmail.com
+- [Contact form](https://radhityasofwan.my.id/#contact)

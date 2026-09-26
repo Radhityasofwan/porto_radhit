@@ -69,6 +69,7 @@ $techs = explode(',', $project['tech_stacks']);
 <html lang="<?php echo $lang; ?>">
 <head>
     <meta charset="UTF-8">
+    <link rel="preload" href="/styles.min.css?v=4" as="style" onload="this.onload=null;this.rel='stylesheet'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($projectTitle); ?> - <?php echo t('project.detail', [], $lang); ?></title>
     
@@ -88,25 +89,42 @@ $techs = explode(',', $project['tech_stacks']);
     <meta property="og:type" content="article">
 
     <!-- Styles & Scripts -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script> 
-        tailwind.config = { 
-            darkMode: 'class', 
-            theme: { 
-                extend: { 
-                    colors: { 
-                        darkbg: '#0F172A', darkcard: '#1E293B', 
-                        lightbg: '#F8FAFC', lightcard: '#FFFFFF', 
-                        primary: '#6366F1' 
-                    } 
-                } 
-            } 
-        } 
-    </script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap'); body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
-    <script>if (localStorage.theme === 'light') { document.documentElement.classList.remove('dark'); } else { document.documentElement.classList.add('dark'); }</script>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"></noscript>
+    <link rel="stylesheet" href="/styles.min.css?v=4">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"></noscript>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+        <script>if (localStorage.theme === 'light') { document.documentElement.classList.remove('dark'); } else { document.documentElement.classList.add('dark'); }</script>
+
+    <style>
+        /* Critical: prevent background FOUC + font-display metric matching */
+        html { background: #F8FAFC; }
+        html.dark { background: #0F172A; }
+        body {
+            font-family: "Plus Jakarta Sans", "PJSFallback", system-ui, -apple-system, sans-serif;
+            background: #F8FAFC;
+            color: #1e293b;
+            overflow-x: hidden;
+            transition: background-color 0.5s ease;
+            margin: 0;
+        }
+        html.dark body { background: #0F172A; color: #f1f5f4; }
+        /* Font metric substitution: match Plus Jakarta Sans metrics with Arial fallback
+           Reduces CLS when web font swaps in (font-display: swap) */
+        @font-face {
+            font-family: "PJSFallback";
+            src: local("Arial");
+            size-adjust: 97%;
+            ascent-override: 94%;
+            descent-override: 25%;
+            line-gap-override: 0%;
+        }
+        /* Ensure navbar is hidden until JS/CSS loads to prevent layout flash */
+        * { box-sizing: border-box; }
+    </style>
 </head>
 <body class="bg-lightbg text-slate-800 dark:bg-darkbg dark:text-slate-100 selection:bg-primary selection:text-white">
 

@@ -1,0 +1,31 @@
+# Kredensial — tidak pernah masuk repo
+config.local.php
+porto-config.php
+
+# Dump database
+*.sql
+
+# Log & sampah OS/editor
+*.log
+error_log
+.DS_Store
+*.err.log
+*.out.log
+
+# Arsip & instalasi lain yang ikut tersimpan di folder ini
+arsip applybot/
+DO_NOT_UPLOAD_HERE
+
+# Skrip/dev docs yang tidak untuk produksi
+restore_profile1.php
+reset_password.php
+apply_seo.py
+query
+layoutpdf.md
+struktur-data.md
+template-cv.md
+CV-radhit.pdf
+
+# Node/PHP tooling
+node_modules/
+vendor/
