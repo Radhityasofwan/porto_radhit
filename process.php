@@ -507,6 +507,42 @@ function extractFirstJsonObject($text) {
     return null;
 }
 
+// --- HELPER: Salvage a JSON object cut off by the output token limit ---
+// Keeps everything up to the last complete member, then closes the open containers
+function repairTruncatedJson($text) {
+    $start = strpos($text, '{');
+    if ($start === false) return null;
+    $text = substr($text, $start);
+
+    $stack = []; $inStr = false; $esc = false;
+    $cutAt = null; $stackAtCut = null;
+
+    for ($i = 0, $len = strlen($text); $i < $len; $i++) {
+        $c = $text[$i];
+        if ($esc)  { $esc = false; continue; }
+        if ($inStr) {
+            if ($c === '\\')  $esc = true;
+            elseif ($c === '"') $inStr = false;
+            continue;
+        }
+        if ($c === '"') { $inStr = true; continue; }
+        if ($c === '{' || $c === '[') { $stack[] = $c; continue; }
+        if ($c === '}' || $c === ']') {
+            if (!$stack) return null;
+            array_pop($stack);
+            $cutAt = $i; $stackAtCut = $stack;
+            continue;
+        }
+        // A comma outside a string means every member before it is complete
+        if ($c === ',' && $stack) { $cutAt = $i - 1; $stackAtCut = $stack; }
+    }
+
+    if ($cutAt === null) return null;
+    $closer = '';
+    foreach (array_reverse($stackAtCut) as $open) $closer .= $open === '{' ? '}' : ']';
+    return rtrim(substr($text, 0, $cutAt + 1), " \t\n\r,") . $closer;
+}
+
 // --- HELPER: Slug ---
 function createSlug($string, $conn, $table, $id = null) {
     $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $string)));
@@ -934,7 +970,8 @@ function callGemini($apiKeys, $requestBody, $timeout = 30) {
                 $errMsg = $data['error']['message'] ?? null;
 
                 if ($httpCode === 200 && $text !== null) {
-                    return ['ok' => true, 'text' => $text, 'model' => "{$ver}/{$model}", 'key_index' => $keyIndex];
+                    return ['ok' => true, 'text' => $text, 'model' => "{$ver}/{$model}", 'key_index' => $keyIndex,
+                            'finish_reason' => $data['candidates'][0]['finishReason'] ?? ''];
                 }
 
                 // Quota exhausted — mark and break to try next key
@@ -1435,7 +1472,7 @@ PROMPT;
     $payload = json_encode([
         'system_instruction' => ['parts' => [['text' => $sysprompt]]],
         'contents'           => [['parts' => [['text' => $prompt]]]],
-        'generationConfig'   => ['temperature' => 0.45, 'maxOutputTokens' => 4096, 'responseMimeType' => 'application/json'],
+        'generationConfig'   => ['temperature' => 0.45, 'maxOutputTokens' => 8192, 'responseMimeType' => 'application/json'],
     ]);
 
     $result = callGemini($apiKeys, $payload, 120);
@@ -1452,7 +1489,19 @@ PROMPT;
         $extracted = extractFirstJsonObject($rawText);
         if ($extracted !== null) $cvJson = json_decode($extracted, true);
     }
-    if (!is_array($cvJson)) jsonResponse('error', 'Gagal parse JSON dari Gemini. Coba generate ulang.');
+    if (!is_array($cvJson)) {
+        // Cut off at maxOutputTokens leaves the object unterminated; keep the complete part
+        // instead of throwing the whole generation away
+        $repaired = repairTruncatedJson($rawText);
+        if ($repaired !== null) $cvJson = json_decode($repaired, true);
+    }
+    $cvKeys = array_intersect_key(is_array($cvJson) ? $cvJson : [], array_flip(['personal','summary','skills','experience','projects','education']));
+    if (!$cvKeys) {
+        $reason = ($result['finish_reason'] ?? '') === 'MAX_TOKENS'
+            ? 'Output Gemini terpotong batas token. Coba generate ulang.'
+            : 'Gagal parse JSON dari Gemini. Coba generate ulang.';
+        jsonResponse('error', $reason . ' Preview: ' . mb_substr($rawText, 0, 200));
+    }
 
     // Save to cv_history
     $histLabel = date('d M Y, H:i') . ' — ' . strtoupper($mode) . ' (' . strtoupper($lang) . ')';
