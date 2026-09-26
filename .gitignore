@@ -14,6 +14,8 @@ error_log
 
 # Arsip & instalasi lain yang ikut tersimpan di folder ini
 arsip applybot/
+# Aplikasi apply/ tidak ada di repo; tanpa baris ini deploy menghapusnya
+apply/
 DO_NOT_UPLOAD_HERE
 
 # Skrip/dev docs yang tidak untuk produksi
