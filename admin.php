@@ -1813,8 +1813,7 @@ $adminUi = [
             fd.append('topic', topic);
 
             try {
-                const res = await fetch('process.php', { method: 'POST', body: fd });
-                const data = await res.json();
+                const data = await postJson(fd);
 
                 if (data.status !== 'success') {
                     document.getElementById('ai-generating-state').classList.add('hidden');
@@ -1879,9 +1878,31 @@ $adminUi = [
                 if (formBody) formBody.scrollTop = 0;
 
             } catch (e) {
-                Swal.fire('Error', 'Gagal menghubungi server. Coba lagi.', 'error');
+                Swal.fire('Error', e.message, 'error');
                 document.getElementById('ai-generating-state').classList.add('hidden');
                 document.getElementById('btn-run-ai').disabled = false;
+            }
+        }
+
+        // POST to process.php and always come back with either parsed JSON or a message that
+        // says what actually failed. A PHP fatal or gateway timeout answers with an HTML page,
+        // which r.json() turns into an error indistinguishable from a dropped connection.
+        async function postJson(fd, opts = {}) {
+            let res;
+            try {
+                res = await fetch('process.php', { method: 'POST', body: fd, signal: opts.signal });
+            } catch (e) {
+                if (e.name === 'AbortError') throw e;
+                throw new Error('Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.');
+            }
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+                throw new Error(res.status >= 500
+                    ? `Server gagal memproses permintaan (HTTP ${res.status}). ${snippet || 'Coba lagi sebentar lagi.'}`
+                    : `Respons tidak valid dari server (HTTP ${res.status}). ${snippet}`);
             }
         }
 
@@ -2258,7 +2279,7 @@ $adminUi = [
 
             let res;
             try {
-                res = await fetch('process.php', { method: 'POST', body: fd, signal: cvAbortController.signal }).then(r => r.json());
+                res = await postJson(fd, { signal: cvAbortController.signal });
             } catch (e) {
                 cvBtnIdle();
                 if (e.name === 'AbortError') {
@@ -2958,11 +2979,11 @@ li { margin-bottom: 1.5pt; line-height: 1.46; }
 
             let res;
             try {
-                res = await fetch('process.php', { method: 'POST', body: fd }).then(r => r.json());
+                res = await postJson(fd);
             } catch(e) {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-magic"></i> Generate Profil AI';
-                Swal.fire('Error', 'Koneksi gagal. Coba lagi.', 'error');
+                Swal.fire('Error', e.message, 'error');
                 return;
             }
 
@@ -3215,11 +3236,11 @@ li { margin-bottom: 1.5pt; line-height: 1.46; }
 
             let res;
             try {
-                res = await fetch('process.php', { method: 'POST', body: fd }).then(r => r.json());
+                res = await postJson(fd);
             } catch(e) {
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Profil Baru';
-                Swal.fire('Error', 'Koneksi gagal. Coba lagi.', 'error');
+                Swal.fire('Error', e.message, 'error');
                 return;
             }
 

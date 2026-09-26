@@ -123,7 +123,9 @@ if ($action === 'create_profile') {
 // --- GENERATE PROFILE DRAFT (AI) ---
 if ($action === 'generate_profile_draft') {
     if (!isset($_SESSION['admin_logged_in'])) jsonResponse('error', 'Unauthorized');
-    @set_time_limit(180);
+    // Keep the whole request inside the web server's own limit — a request the app never
+    // answers is what reaches the browser as an HTML error page ("Koneksi gagal")
+    @set_time_limit(150);
 
     $lang          = ($_POST['lang'] ?? 'id') === 'en' ? 'en' : 'id';
     $jd            = mb_substr(trim($_POST['job_description'] ?? ''), 0, 4000);
@@ -263,7 +265,7 @@ PROMPT;
         'generationConfig'   => ['temperature' => 0.55, 'maxOutputTokens' => 6000, 'responseMimeType' => 'application/json'],
     ]);
 
-    $resultDraft = callGemini($apiKeys, $payloadDraft, 120);
+    $resultDraft = callGemini($apiKeys, $payloadDraft, 90, 110);
     if (!$resultDraft['ok']) jsonResponse('error', $resultDraft['error']);
 
     $rawDraft = trim($resultDraft['text']);
@@ -275,7 +277,18 @@ PROMPT;
         $extracted = extractFirstJsonObject($rawDraft);
         if ($extracted !== null) $draft = json_decode($extracted, true);
     }
-    if (!is_array($draft)) jsonResponse('error', 'Gagal parse JSON dari Gemini. Coba generate ulang.');
+    if (!is_array($draft)) {
+        // Cut off at maxOutputTokens leaves the object unterminated; keep the complete part
+        $repaired = repairTruncatedJson($rawDraft);
+        if ($repaired !== null) $draft = json_decode($repaired, true);
+    }
+    $draftKeys = array_intersect_key(is_array($draft) ? $draft : [], array_flip(['profile', 'skills', 'experience', 'hero_chat', 'articles']));
+    if (!$draftKeys) {
+        $reason = ($resultDraft['finish_reason'] ?? '') === 'MAX_TOKENS'
+            ? 'Output Gemini terpotong batas token. Coba generate ulang.'
+            : 'Gagal parse JSON dari Gemini. Coba generate ulang.';
+        jsonResponse('error', $reason . ' Preview: ' . mb_substr($rawDraft, 0, 200));
+    }
 
     jsonResponse('success', 'Draft profil berhasil digenerate.', $draft);
 }
@@ -890,28 +903,42 @@ function geminiRequest($apiKey, $url, $body, $timeout) {
             'Content-Type: application/json',
             'x-goog-api-key: ' . $apiKey,
         ],
+        CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT        => $timeout,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_FOLLOWLOCATION => true,
     ]);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr  = curl_error($ch);
-    return [$response, $httpCode, $curlErr];
+    $response  = curl_exec($ch);
+    $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr   = curl_error($ch);
+    $curlErrNo = curl_errno($ch);
+    return [$response, $httpCode, $curlErr, $curlErrNo];
 }
 
 // --- HELPER: call Gemini API — multi-key rotation + auto-discover working model ---
 // $apiKeys can be a single string or an array of strings.
 // On quota/rate-limit (RESOURCE_EXHAUSTED / 429) the next key is tried automatically.
-function callGemini($apiKeys, $requestBody, $timeout = 30) {
+// $totalBudget caps the whole rotation in seconds (0 = uncapped) — without it, a slow model
+// per key × model × version multiplies the per-attempt timeout past the web server's own
+// request limit, and the browser sees an HTML error page instead of our JSON.
+function callGemini($apiKeys, $requestBody, $timeout = 30, $totalBudget = 0) {
     // Normalize to array
     if (is_string($apiKeys)) $apiKeys = [trim($apiKeys)];
     $apiKeys = array_values(array_filter(array_map('trim', $apiKeys)));
     if (empty($apiKeys)) return ['ok' => false, 'error' => 'Tidak ada API key Gemini yang tersedia.'];
 
+    $startedAt = microtime(true);
+    $secondsLeft = function() use ($startedAt, $totalBudget) {
+        return $totalBudget > 0 ? $totalBudget - (microtime(true) - $startedAt) : null;
+    };
+
     $globalErrors = [];
+    $timedOut = false;
 
     foreach ($apiKeys as $keyIndex => $apiKey) {
+        if ($timedOut) break;
+        $left = $secondsLeft();
+        if ($left !== null && $left <= 5) { $globalErrors[] = 'Batas waktu total tercapai'; break; }
         // Step 1: Ask Google which models are available for this key (GET request)
         $listCh = curl_init("https://generativelanguage.googleapis.com/v1beta/models?pageSize=100");
         curl_setopt_array($listCh, [
@@ -957,11 +984,18 @@ function callGemini($apiKeys, $requestBody, $timeout = 30) {
 
         foreach ($availableModels as $model) {
             foreach (['v1beta', 'v1'] as $ver) {
+                $left = $secondsLeft();
+                if ($left !== null && $left <= 5) { $keyErrors[] = 'Waktu habis sebelum model berikutnya dicoba'; break 2; }
+                $attemptTimeout = $left !== null ? (int)min($timeout, max(5, $left)) : $timeout;
+
                 $url = "https://generativelanguage.googleapis.com/{$ver}/models/{$model}:generateContent";
-                [$response, $httpCode, $curlErr] = geminiRequest($apiKey, $url, $requestBody, $timeout);
+                [$response, $httpCode, $curlErr, $curlErrNo] = geminiRequest($apiKey, $url, $requestBody, $attemptTimeout);
 
                 if (!$response) {
                     $keyErrors[] = "{$model}: cURL - " . ($curlErr ?: 'no response');
+                    // Wall-clock timeout (cURL errno 28) — the budget is the binding constraint,
+                    // so trying more models or keys only delays the failure
+                    if ($curlErrNo === 28) { $timedOut = true; break 2; }
                     continue;
                 }
 
@@ -1001,6 +1035,11 @@ function callGemini($apiKeys, $requestBody, $timeout = 30) {
 
         // If quota exhausted and there are more keys, continue silently
         // Otherwise (no quota issue, no more models worked), keep trying remaining keys
+    }
+
+    if ($timedOut) {
+        $limit = $totalBudget > 0 ? $totalBudget : $timeout;
+        return ['ok' => false, 'error' => "Gemini tidak merespons dalam {$limit} detik. Coba lagi atau pilih model yang lebih ringan."];
     }
 
     $summary = implode(' | ', array_slice($globalErrors, 0, 5));
@@ -1049,7 +1088,7 @@ if ($action == 'test_ai_key') {
 if ($action == 'ai_generate_project') {
     if (!isset($_SESSION['admin_logged_in'])) jsonResponse('error', 'Unauthorized');
 
-    @set_time_limit(180); // override PHP max_execution_time for this heavy request
+    @set_time_limit(150); // override PHP max_execution_time for this heavy request
 
     $topic = trim($_POST['topic'] ?? '');
     if (empty($topic)) jsonResponse('error', 'Topik tidak boleh kosong.');
@@ -1167,7 +1206,7 @@ PROMPT;
         ],
     ]);
 
-    $result = callGemini($apiKeys, $payload, 120);
+    $result = callGemini($apiKeys, $payload, 90, 110);
 
     if (!$result['ok']) {
         jsonResponse('error', $result['error']);
@@ -1258,7 +1297,7 @@ PROMPT;
 // --- GENERATE CV ---
 if ($action == 'generate_cv') {
     if (!isset($_SESSION['admin_logged_in'])) jsonResponse('error', 'Unauthorized');
-    @set_time_limit(180);
+    @set_time_limit(150);
 
     $mode   = in_array($_POST['mode'] ?? '', ['generate','rewrite','tailor','ats']) ? $_POST['mode'] : 'generate';
     $lang   = ($_POST['lang'] ?? 'id') === 'en' ? 'en' : 'id';
@@ -1475,7 +1514,7 @@ PROMPT;
         'generationConfig'   => ['temperature' => 0.45, 'maxOutputTokens' => 8192, 'responseMimeType' => 'application/json'],
     ]);
 
-    $result = callGemini($apiKeys, $payload, 120);
+    $result = callGemini($apiKeys, $payload, 90, 110);
     if (!$result['ok']) jsonResponse('error', $result['error']);
 
     $rawText = trim($result['text']);
