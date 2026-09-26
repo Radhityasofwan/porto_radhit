@@ -1,6 +1,7 @@
-<?php 
+<?php
 require_once 'i18n.php';
-include 'db.php'; 
+include 'db.php';
+// db.php must load first: the default language lives in site_settings
 $lang = currentLang();
 $profile = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM profile WHERE id=1"));
 ?>

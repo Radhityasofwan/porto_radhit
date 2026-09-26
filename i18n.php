@@ -1,7 +1,30 @@
 <?php
 
 const SITE_SUPPORTED_LANGS = ['id', 'en'];
+// Fallback only — the live value comes from the `site_default_lang` site setting
 const SITE_DEFAULT_LANG = 'en';
+
+function siteDefaultLang(): string
+{
+    static $lang = null;
+
+    if ($lang !== null) {
+        return $lang;
+    }
+
+    $lang = SITE_DEFAULT_LANG;
+
+    // siteSetting() is defined in db.php; a page that never loads the DB (e.g. logout)
+    // falls back to the constant above
+    if (function_exists('siteSetting')) {
+        $stored = siteSetting('site_default_lang');
+        if (is_string($stored) && in_array($stored, SITE_SUPPORTED_LANGS, true)) {
+            $lang = $stored;
+        }
+    }
+
+    return $lang;
+}
 
 function currentLang(): string
 {
@@ -11,9 +34,10 @@ function currentLang(): string
         return $lang;
     }
 
-    $requested = $_GET['lang'] ?? $_COOKIE['site_lang'] ?? SITE_DEFAULT_LANG;
+    $default = siteDefaultLang();
+    $requested = $_GET['lang'] ?? $_COOKIE['site_lang'] ?? $default;
     if (!in_array($requested, SITE_SUPPORTED_LANGS, true)) {
-        $requested = SITE_DEFAULT_LANG;
+        $requested = $default;
     }
 
     if (isset($_GET['lang']) && (!isset($_COOKIE['site_lang']) || $_COOKIE['site_lang'] !== $requested)) {

@@ -1,12 +1,12 @@
-<?php 
+<?php
 require_once 'i18n.php';
+include 'db.php';
 
 // 1. Optimasi GZIP
 if (!empty($_SERVER['HTTP_ACCEPT_ENCODING']) && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== false) ob_start("ob_gzhandler"); else ob_start();
 
+// db.php must load first: the default language lives in site_settings
 $lang = currentLang();
-
-include 'db.php'; 
 
 // --- DEFINISI BASE URL (PENTING UNTUK REDIRECT) ---
 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";

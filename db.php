@@ -80,6 +80,19 @@ mysqli_query($conn, "CREATE TABLE IF NOT EXISTS cv_history (
     INDEX idx_cv_profile (profile_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+// Read a single site_settings value; null when the key is absent
+function siteSetting($key) {
+    global $conn;
+    static $cache = [];
+    if (array_key_exists($key, $cache)) return $cache[$key];
+
+    $cache[$key] = null;
+    $r = mysqli_query($conn, "SELECT setting_value FROM site_settings WHERE setting_key = '" . mysqli_real_escape_string($conn, $key) . "' LIMIT 1");
+    if ($r && ($row = mysqli_fetch_assoc($r))) $cache[$key] = $row['setting_value'];
+
+    return $cache[$key];
+}
+
 // Multi-profile migration
 function _addCol($conn, $table, $col, $def) {
     $r = mysqli_query($conn, "SHOW COLUMNS FROM `$table` LIKE '$col'");

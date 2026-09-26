@@ -1,12 +1,13 @@
-<?php 
+<?php
 require_once 'i18n.php';
+include 'db.php';
 
 // 1. OPTIMASI: Aktifkan Kompresi GZIP
 if (!empty($_SERVER['HTTP_ACCEPT_ENCODING']) && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== false) ob_start("ob_gzhandler"); else ob_start();
 
+// db.php must load first: the default language lives in site_settings
 $lang = currentLang();
 
-include 'db.php';
 $profile = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM profile WHERE is_active=1 LIMIT 1"));
 if (!$profile) $profile = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM profile ORDER BY id ASC LIMIT 1"));
 $activeProfileId = (int)($profile['id'] ?? 1);

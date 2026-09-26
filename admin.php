@@ -2,10 +2,12 @@
 session_start(); 
 require_once 'i18n.php';
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT); // Enable MySQLi error reporting as exceptions
-$lang = currentLang();
 require_once __DIR__ . '/auth_check.php';
-if (!isset($_SESSION['admin_logged_in'])) { header("Location: " . localizedUrl('login.php', $lang)); exit; }
-include 'db.php'; 
+if (!isset($_SESSION['admin_logged_in'])) { header("Location: " . localizedUrl('login.php', currentLang())); exit; }
+include 'db.php';
+
+// After db.php: the default language lives in site_settings
+$lang = currentLang();
 
 // Generate CSRF
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -1127,6 +1129,36 @@ $adminUi = [
                         </div>
                     </div>
 
+                    <!-- Default site language -->
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="p-5 border-b border-slate-100 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-50">
+                                <i class="fas fa-language text-indigo-500"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-800">Bahasa Default Website</h3>
+                                <p class="text-xs text-slate-500">Berlaku untuk pengunjung yang belum pernah memilih bahasa sendiri</p>
+                            </div>
+                        </div>
+
+                        <div class="p-5 space-y-4">
+                            <?php $defaultLangNow = in_array($siteSettings['site_default_lang'] ?? '', SITE_SUPPORTED_LANGS, true) ? $siteSettings['site_default_lang'] : SITE_DEFAULT_LANG; ?>
+                            <select id="default-site-lang" class="input-modern w-full">
+                                <option value="en" <?php echo $defaultLangNow === 'en' ? 'selected' : ''; ?>>English (EN)</option>
+                                <option value="id" <?php echo $defaultLangNow === 'id' ? 'selected' : ''; ?>>Bahasa Indonesia (ID)</option>
+                            </select>
+
+                            <button type="button" onclick="saveDefaultLang()" class="btn-modern">
+                                <i class="fas fa-save"></i> Simpan Bahasa Default
+                            </button>
+
+                            <p class="text-xs text-slate-400">
+                                Pengunjung yang pernah menekan tombol ID/EN tetap memakai pilihan mereka
+                                (tersimpan di cookie). Hapus cookie <code>site_lang</code> untuk menguji default baru.
+                            </p>
+                        </div>
+                    </div>
+
                     <!-- Info box -->
                     <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
                         <h4 class="font-bold text-indigo-800 mb-2 flex items-center gap-2"><i class="fas fa-info-circle"></i> Auto-Rotate API Key</h4>
@@ -2053,6 +2085,26 @@ $adminUi = [
                 }
             } catch (e) {
                 Swal.fire('Error', 'Gagal menghubungi server.', 'error');
+            }
+        }
+
+        // ── Default site language ─────────────────────────────────────────────
+        async function saveDefaultLang() {
+            const select = document.getElementById('default-site-lang');
+            const fd = new FormData();
+            fd.append('action',        'save_setting');
+            fd.append('is_ajax',       '1');
+            fd.append('csrf_token',    document.getElementById('settings-csrf').value);
+            fd.append('setting_key',   'site_default_lang');
+            fd.append('setting_value', select.value);
+
+            try {
+                const res = await postJson(fd);
+                Swal.fire(res.status === 'success' ? 'Tersimpan' : 'Gagal',
+                    res.message || (res.status === 'success' ? 'Bahasa default diperbarui.' : 'Gagal menyimpan.'),
+                    res.status === 'success' ? 'success' : 'error');
+            } catch (e) {
+                Swal.fire('Error', e.message, 'error');
             }
         }
 

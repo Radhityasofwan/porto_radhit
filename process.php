@@ -2,6 +2,7 @@
 ob_start(); // Buffer all output — prevents PHP notices/warnings from polluting JSON responses
 session_start();
 require_once __DIR__ . '/auth_check.php';
+require_once __DIR__ . '/i18n.php'; // SITE_SUPPORTED_LANGS — validates the default-language setting
 mysqli_report(MYSQLI_REPORT_OFF); // Disable mysqli exceptions; errors handled manually via !$r checks
 include 'db.php';
 
@@ -887,6 +888,9 @@ if ($action == 'save_setting') {
     $key   = mysqli_real_escape_string($conn, $_POST['setting_key'] ?? '');
     $value = mysqli_real_escape_string($conn, $_POST['setting_value'] ?? '');
     if (empty($key)) jsonResponse('error', 'Setting key kosong.');
+    if ($key === 'site_default_lang' && !in_array($_POST['setting_value'] ?? '', SITE_SUPPORTED_LANGS, true)) {
+        jsonResponse('error', 'Bahasa tidak didukung.');
+    }
     mysqli_query($conn, "INSERT INTO site_settings (setting_key, setting_value) VALUES ('$key', '$value')
         ON DUPLICATE KEY UPDATE setting_value = '$value'");
     jsonResponse('success', 'Setting berhasil disimpan.');
