@@ -1346,14 +1346,18 @@ $adminUi = [
                 <button onclick="closeAiModal()" class="w-8 h-8 bg-slate-100 rounded-full text-slate-500"><i class="fas fa-times"></i></button>
             </div>
             <div class="modal-body space-y-4">
-                <div class="bg-purple-50 border border-purple-100 rounded-xl p-4 text-sm text-purple-700">
-                    <strong>Tips:</strong> Jelaskan topik proyeknya secara spesifik untuk hasil terbaik.<br>
-                    Contoh: <em>"Website landing page untuk startup fintech peminjaman modal UMKM"</em>
+                <div class="bg-purple-50 border border-purple-100 rounded-xl p-4 text-sm text-purple-700 space-y-2">
+                    <p><strong>Semakin detail brief-nya, semakin tajam hasilnya.</strong> Sebutkan industri klien, masalah bisnis, fitur/deliverable konkret, dan teknologi bila sudah ada.</p>
+                    <p class="text-xs text-purple-600">Contoh: <em>"Redesign aplikasi mobile e-commerce fashion lokal (target wanita 20-35) untuk menurunkan cart abandonment. Fokus: AR try-on dan checkout satu langkah. Stack: React Native, Midtrans, Supabase."</em></p>
                 </div>
                 <div>
-                    <label class="text-xs font-bold text-slate-700 block mb-1">Topik / Deskripsi Proyek</label>
-                    <textarea id="ai_topic_input" class="input-modern h-28"
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-bold text-slate-700">Topik / Deskripsi Proyek</label>
+                        <span id="ai_topic_count" class="text-[11px] text-slate-400">0 / 2500</span>
+                    </div>
+                    <textarea id="ai_topic_input" class="input-modern h-40" maxlength="2500" oninput="document.getElementById('ai_topic_count').textContent = this.value.length + ' / 2500'"
                         placeholder="Contoh: Aplikasi mobile e-commerce fashion lokal dengan fitur AR try-on untuk meningkatkan konversi pelanggan..."></textarea>
+                    <p class="text-[11px] text-slate-400 mt-1">Total konten yang dihasilkan AI dibatasi maksimal 3000 kata.</p>
                 </div>
                 <div id="ai-generating-state" class="hidden">
                     <div class="flex items-center gap-3 bg-slate-50 rounded-xl p-4">
@@ -1777,6 +1781,7 @@ $adminUi = [
         // --- AI GENERATE ---
         function openAiModal() {
             document.getElementById('ai_topic_input').value = '';
+            document.getElementById('ai_topic_count').textContent = '0 / 2500';
             document.getElementById('ai-generating-state').classList.add('hidden');
             document.getElementById('btn-run-ai').disabled = false;
             document.getElementById('modal-ai-topic').classList.add('show');
@@ -1790,6 +1795,10 @@ $adminUi = [
             const topic = document.getElementById('ai_topic_input').value.trim();
             if (!topic) {
                 Swal.fire('Topik kosong', 'Mohon isi topik proyek terlebih dahulu.', 'warning');
+                return;
+            }
+            if (topic.length < 20) {
+                Swal.fire('Brief terlalu singkat', 'Tambahkan industri klien, masalah bisnis, atau fitur yang ingin dibangun agar hasil AI lebih spesifik.', 'info');
                 return;
             }
 
@@ -2302,9 +2311,37 @@ $adminUi = [
             return `<span contenteditable="true" data-cv-path="${path}" data-ph="${esc(ph)}">${esc(val)}</span>`;
         }
 
+        // Drop scheme/www/tracking params so links read like "linkedin.com/in/name", never a share URL
+        function cvCleanUrl(u) {
+            return String(u || '')
+                .replace(/^https?:\/\//i, '')
+                .replace(/^www\./i, '')
+                .split(/[?#]/)[0]
+                .replace(/\/+$/, '')
+                .trim();
+        }
+
+        function cvCleanPhone(p) {
+            const raw = String(p || '').trim();
+            const digits = raw.replace(/[^\d]/g, '');
+            const m = digits.match(/^(?:62|0)(\d{8,13})$/);
+            if (!m) return raw;
+            return ('0' + m[1]).replace(/^(\d{4})(\d{4})(\d+)$/, '$1-$2-$3');
+        }
+
+        function cvCleanContact(d) {
+            const p = d.personal || (d.personal = {});
+            p.location  = String(p.location || '').trim();
+            p.email     = String(p.email || '').trim();
+            p.phone     = cvCleanPhone(p.phone);
+            p.linkedin  = cvCleanUrl(p.linkedin);
+            p.portfolio = cvCleanUrl(p.portfolio);
+            return p;
+        }
+
         function renderCvPreview(d) {
             const L = cvLabels(d);
-            const p = d.personal || {};
+            const p = cvCleanContact(d);
 
             // Contact lines — every slot editable; filled ones get a " • " separator, empty ones show a hint
             const line1 = cvContactSpan('personal.location', p.location, L.ph_location)
@@ -2422,6 +2459,7 @@ $adminUi = [
                     _setCvPath(cvData, path, val);
                 }
             });
+            cvCleanContact(cvData);
         }
 
         function downloadCvPdf() {

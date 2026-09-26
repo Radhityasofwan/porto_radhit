@@ -1064,7 +1064,7 @@ ATURAN PENULISAN (wajib):
 9. result_text: badge metrik yang tajam, 2–5 kata, pakai angka (contoh: "Churn -38%", "ROI 4.2x", "Deploy 10x Lebih Cepat").
 10. slug: lowercase, pisah tanda hubung, tanpa kata depan, maks 6 kata, unik dan deskriptif.
 11. Kutip hanya tanda kutip lurus (") dan hindari karakter non-ASCII selain tanda hubung dan tanda persen. Jangan pakai emoji.
-12. JSON harus valid: setiap tanda kutip di dalam nilai di-escape sebagai \". Jangan menambahkan key di luar daftar.
+12. JSON harus valid: kutip ganda di dalam nilai harus di-escape dengan backslash. Jangan menambahkan key di luar daftar.
 
 ANGGARAN KATA — TOTAL SEMUA FIELD (ID + EN) MAKSIMAL 3000 KATA. Patuhi batas per field ini:
 - title + title_en: 16 kata
@@ -1169,16 +1169,23 @@ PROMPT;
               'result_text_en', 'description', 'description_en', 'tech_stacks',
               'meta_desc', 'meta_desc_en', 'problem', 'problem_en', 'solution', 'solution_en'] as $plainKey) {
         if (!isset($projectData[$plainKey]) || !is_string($projectData[$plainKey])) continue;
-        $val = strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $projectData[$plainKey]));
-        $val = trim(preg_replace('/[ \t]+/', ' ', $val));
-        $projectData[$plainKey] = $val;
+        $val = $projectData[$plainKey];
+        // Preserve paragraph breaks before the block tags are stripped away
+        $val = preg_replace('#</(?:p|div|h[1-6]|li|ul|ol)>#i', "\n\n", $val);
+        $val = preg_replace('#<br\s*/?>#i', "\n", $val);
+        $val = strip_tags($val);
+        $val = preg_replace('/[ \t]+/', ' ', $val);
+        $val = preg_replace('/\n{3,}/', "\n\n", $val);
+        $projectData[$plainKey] = trim($val);
     }
 
     // HTML fields: keep only the tags the detail template renders
     foreach (['details', 'details_en'] as $htmlKey) {
         if (!isset($projectData[$htmlKey]) || !is_string($projectData[$htmlKey])) continue;
-        $html = strip_tags($projectData[$htmlKey], '<h3><p><ul><li><strong>');
-        $html = preg_replace('/<(?!\/?(?:h3|p|ul|li|strong)\b)[^>]*>/i', '', $html);
+        $html = preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', '', $projectData[$htmlKey]);
+        $html = strip_tags($html, '<h3><p><ul><li><strong>');
+        // Drop attributes (class/style) and any inline event handlers the model added
+        $html = preg_replace('/<(h3|p|ul|li|strong)\b[^>]*>/i', '<$1>', $html);
         $projectData[$htmlKey] = trim($html);
     }
 
