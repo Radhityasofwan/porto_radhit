@@ -3,17 +3,22 @@
  * db.php — kredensial dimuat dari file config di luar repo.
  *
  * Urutan pencarian:
- *   1. config.local.php          → development lokal (gitignored)
- *   2. ../porto-config.php       → produksi, di luar public_html
+ *   1. config.local.php      → development lokal (gitignored)
+ *   2. porto-config.php      → produksi, se-dir (gitignored)
+ *   3. ../porto-config.php   → produksi, di luar public_html (gitignored)
  *
  * Salin config.example.php untuk membuat salah satunya.
  */
 $__cfg = null;
-foreach ([__DIR__ . '/config.local.php', dirname(__DIR__) . '/porto-config.php'] as $__f) {
+foreach ([
+    __DIR__ . '/config.local.php',
+    __DIR__ . '/porto-config.php',
+    dirname(__DIR__) . '/porto-config.php',
+] as $__f) {
     if (is_file($__f)) { $__cfg = require $__f; break; }
 }
 if (!is_array($__cfg)) {
-    die("Konfigurasi database tidak ditemukan. Salin config.example.php menjadi config.local.php (lokal) atau porto-config.php di luar public_html (produksi).");
+    die("Konfigurasi database tidak ditemukan. Salin config.example.php menjadi config.local.php atau porto-config.php (se-dir, atau satu level di atas public_html untuk produksi).");
 }
 
 // Buat koneksi
